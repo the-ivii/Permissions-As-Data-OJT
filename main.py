@@ -1,10 +1,9 @@
-# Branch: feat/rbac-abac-engine
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 
 import models, schemas, crud
-from database import engine, get_db # get_db is imported from database.py now
+from database import engine, get_db
 
 models.Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Permissions-as-Data Hybrid Service")
@@ -59,12 +58,16 @@ def authorize(request: schemas.AuthRequest, db: Session = Depends(get_db)):
         if rule.get("role") not in user_roles_list and rule.get("role") != "*":
             continue
             
-        # B. ABAC Match
+        # B. Action Match - FIX ADDED HERE
+        if rule.get("action") != request.action and rule.get("action") != "*":
+            continue
+            
+        # C. ABAC Match
         resource_constraints = rule.get("resource_match", {})
         if check_abac_conditions(resource_constraints, request.resource):
-            # MATCH FOUND!
+            # --- MATCH FOUND! ---
             decision = (rule.get("effect") == "allow")
-            reason = f"Matched Rule #{i} (Role: {rule.get('role')})."
+            reason = f"Matched Rule #{i} (Role: {rule.get('role')}, Action: {rule.get('action')})."
             break
 
     # 3. Audit Log (If not dry-run)
@@ -80,3 +83,21 @@ def authorize(request: schemas.AuthRequest, db: Session = Depends(get_db)):
         trace_id = db_log.id
 
     return schemas.AuthResponse(decision=decision, reason=reason, trace_id=trace_id)
+
+
+# --- MANAGEMENT APIs (Role/Policy CRUD) ---
+
+@app.post("/roles/", response_model=schemas.RoleResponse)
+def create_role_api(role: schemas.RoleCreate, db: Session = Depends(get_db)):
+    return crud.create_role(db=db, role=role)
+
+@app.post("/policies/", response_model=schemas.PolicyResponse)
+def create_policy_api(policy: schemas.PolicyCreate, db: Session = Depends(get_db)):
+    return crud.create_policy(db=db, policy=policy)
+
+@app.post("/policies/{policy_id}/activate", response_model=schemas.PolicyResponse)
+def activate_policy_version_api(policy_id: int, db: Session = Depends(get_db)):
+    policy = crud.activate_policy(db, policy_id)
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    return policy
