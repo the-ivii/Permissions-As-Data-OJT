@@ -1,2 +1,9 @@
 venv/
 .venv/
+__pycache__/
+*.pyc
+*.pyo
+permissions.db
+test.db
+.pytest_cache/
+.DS_Store
