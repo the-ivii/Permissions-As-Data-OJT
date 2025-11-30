@@ -3,6 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 
+import os
 import models, schemas, crud
 from database import engine, get_db
 from cache import ACTIVE_POLICY_CACHE
@@ -12,7 +13,7 @@ models.Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Permissions-as-Data Hybrid Service")
 
 # --- SECURITY CONFIGURATION ---
-ADMIN_API_KEY = "SUPER_SECRET_ADMIN_KEY_2404" 
+ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "SUPER_SECRET_ADMIN_KEY_2404")
 security_scheme = HTTPBearer()
 
 def verify_admin_key(credentials: HTTPAuthorizationCredentials = Security(security_scheme)):
