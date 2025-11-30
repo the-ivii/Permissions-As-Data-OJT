@@ -3,6 +3,7 @@ from sqlalchemy import desc
 from fastapi import HTTPException
 import models, schemas
 
+from cache import ACTIVE_POLICY_CACHE
 
 def get_role_by_name(db: Session, name: str):
     return db.query(models.Role).filter(models.Role.name == name).first()
@@ -76,4 +77,5 @@ def activate_policy(db: Session, policy_id: int):
         target_policy.is_active = True
         db.commit()
         db.refresh(target_policy)
+        ACTIVE_POLICY_CACHE["policy"] = target_policy
     return target_policy
