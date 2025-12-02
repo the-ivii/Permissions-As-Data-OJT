@@ -54,6 +54,11 @@ def check_abac_conditions(rule_resource_conditions: Dict, request_resource: Dict
             
     return True
 
+# In main.py, add this health check function:
+@app.get("/")
+def read_root():
+    return {"status": "Permissions Service is Operational", "docs": "/docs"}
+
 @app.post("/access", response_model=schemas.AuthResponse)
 def authorize(request: schemas.AuthRequest, db: Session = Depends(get_db)):
     """The master authorization endpoint."""
