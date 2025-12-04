@@ -28,7 +28,8 @@ client = TestClient(app=app)
 # --- GLOBAL VARIABLES ---
 # Admin Key used for all authenticated POST requests (matches the key in main.py)
 ADMIN_HEADERS = {"Authorization": "Bearer SUPER_SECRET_ADMIN_KEY_2404"}
-policy_id = 0
+policy_id = 0       # Stores ID for Policy V1
+policy_id_v2 = 0    # Stores ID for Policy V2
 global_trace_id = 0
 
 # Setup: Create and drop tables for clean testing environment
@@ -72,7 +73,7 @@ def test_a_create_roles_and_check_cycle():
 
 
 def test_b_create_policy_and_activate():
-    """Tests POST /policies and activation endpoint."""
+    """Tests POST /policies and activation endpoint (Sets up Policy V1)."""
     global policy_id
     
     # 1. Define Policy Rules
@@ -97,7 +98,7 @@ def test_b_create_policy_and_activate():
     assert response.status_code == 200
     assert response.json()["is_active"] == True
     
-    # 4. CACHE CHECK: Verify that the policy is now in the in-memory cache
+    # 4. CACHE CHECK: Verify V1 is active
     assert ACTIVE_POLICY_CACHE["policy"].id == policy_id
 
 
@@ -162,26 +163,9 @@ def test_e_audit_log_existence():
 
 # 4. BATCH & INVALIDATION TESTS 
 
-def test_f_batch_and_cache_logic():
-    """Tests POST /access/batch and verifies cache invalidation works."""
-    
-    global policy_id
-    
-    # --- Part 1: Test Batch API ---
-    batch_request = [
-        # Request 1: Should be ALLOWED (Rule 0)
-        {"subject": {"role": "manager"}, "action": "read", "resource": {"status": "DRAFT"}},
-        # Request 2: Should be DENIED (Implicit Deny)
-        {"subject": {"role": "employee"}, "action": "delete", "resource": {}}
-    ]
-
-    response = client.post("/access/batch", json=batch_request)
-    assert response.status_code == 200
-    assert len(response.json()) == 2
-    assert response.json()[0]["decision"] == True
-    assert response.json()[1]["decision"] == False
-
-    # --- Part 2: Test Cache Invalidation ---
+def test_g_create_policy_v2_and_activate():
+    """Creates a second policy version (V2) to set up rollback scenario."""
+    global policy_id_v2
     
     # Create a New Policy V2 that is much stricter
     stricter_policy_content = {
@@ -191,20 +175,86 @@ def test_f_batch_and_cache_logic():
         ]
     }
     response_v2 = client.post("/policies/", json={"name": "Initial_Policy", "content": stricter_policy_content}, headers=ADMIN_HEADERS)
+    assert response_v2.status_code == 200
+    assert response_v2.json()["version"] == 2
     policy_id_v2 = response_v2.json()["id"]
 
+    # Note: V2 is NOT activated here; we test activation in the next test.
+
+
+def test_f_batch_and_cache_logic():
+    """Tests POST /access/batch and verifies V2 cache invalidation."""
+    
+    global policy_id_v2
+    global policy_id
+    
+    # --- Part 1: Test Batch API ---
+    batch_request = [
+        # Request 1: Should be ALLOWED (Rule 0 of V1, which is still active)
+        {"subject": {"role": "manager"}, "action": "read", "resource": {"status": "DRAFT"}},
+        # Request 2: Should be DENIED 
+        {"subject": {"role": "employee"}, "action": "delete", "resource": {}}
+    ]
+
+    response = client.post("/access/batch", json=batch_request)
+    assert response.status_code == 200
+    assert response.json()[0]["decision"] == True # V1 allows this read
+    assert response.json()[1]["decision"] == False
+
+
+    # --- Part 2: Test Cache Invalidation (Activate V2) ---
+    
     # Activate V2. This MUST invalidate the cache.
     response = client.post(f"/policies/{policy_id_v2}/activate", headers=ADMIN_HEADERS)
+    assert response.status_code == 200
     
     # 1. Verify Cache has the new ID
     assert ACTIVE_POLICY_CACHE["policy"].id == policy_id_v2 
     
-    # 2. Verify Access is now DENIED by the stricter policy
-    # Request that was ALLOWED earlier (reading DRAFT) should now fail because V2 doesn't have that rule.
+    # 2. Verify Access is now DENIED by the stricter policy (V2)
+    # The request that was ALLOWED above (reading DRAFT) should now fail.
     response = client.post("/access", json={
         "subject": {"role": "manager"},
-        "action": "read",
+        "action": "read", # V2 doesn't allow 'read'
         "resource": {"status": "DRAFT"} 
     })
-    assert response.json()["decision"] == False # Proves V2 is active (V1 allowed this)
+    assert response.json()["decision"] == False # Proves V2 is active 
     assert "Implicit Deny" in response.json()["reason"]
+
+
+# 5. POLICY VISIBILITY AND ROLLBACK TESTS 
+
+def test_h_get_policy_visibility_and_rollback():
+    """Tests the GET visibility endpoints and rollback functionality."""
+    global policy_id
+    global policy_id_v2
+
+    # 1. Test GET /policies/ (List All Versions)
+    response = client.get("/policies/", headers=ADMIN_HEADERS)
+    assert response.status_code == 200
+    policies_list = response.json()
+    assert len(policies_list) >= 2 # Must contain V1 and V2
+    
+    # Verify V1 and V2 existence
+    v1 = next((p for p in policies_list if p['version'] == 1), None)
+    v2 = next((p for p in policies_list if p['version'] == 2), None)
+    assert v1 is not None
+    assert v2 is not None
+
+    # V2 should be the active one at the start of this test
+    assert v2['is_active'] == True
+    assert v1['is_active'] == False
+    
+    # 2. Test GET /policies/active (Identify Active Version)
+    response = client.get("/policies/active", headers=ADMIN_HEADERS)
+    assert response.status_code == 200
+    assert response.json()['version'] == 2
+
+    # 3. Test Rollback (Activate V1 again)
+    response = client.post(f"/policies/{policy_id}/activate", headers=ADMIN_HEADERS)
+    assert response.status_code == 200
+    
+    # 4. Final Check: Active endpoint shows V1
+    response = client.get("/policies/active", headers=ADMIN_HEADERS)
+    assert response.json()['version'] == 1 # V1 is now the active policy
+    assert response.json()['is_active'] == True
