@@ -145,3 +145,20 @@ def activate_policy_version_api(policy_id: int, db: Session = Depends(get_db), v
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
     return policy
+
+@app.get("/policies/", response_model=List[schemas.PolicyResponse])
+def list_policies_api(db: Session = Depends(get_db), verified: bool = Depends(verify_admin_key)):
+    """Retrieves a list of all policy versions in the database."""
+    return crud.get_all_policies(db)
+
+@app.get("/policies/active", response_model=schemas.PolicyResponse)
+def get_active_policy_api(db: Session = Depends(get_db), verified: bool = Depends(verify_admin_key)):
+    """Retrieves the single currently active policy."""
+    # This leverages the existing cache lookup logic for efficiency
+    active_policy = ACTIVE_POLICY_CACHE.get("policy")
+    if not active_policy:
+        active_policy = crud.get_active_policy(db)
+    
+    if not active_policy:
+        raise HTTPException(status_code=404, detail="No policy is currently active.")
+    return active_policy
