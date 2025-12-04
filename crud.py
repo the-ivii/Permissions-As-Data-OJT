@@ -79,3 +79,11 @@ def activate_policy(db: Session, policy_id: int):
         db.refresh(target_policy)
         ACTIVE_POLICY_CACHE["policy"] = target_policy
     return target_policy
+
+def get_policy_by_id(db: Session, policy_id: int):
+    """Retrieves a specific policy version by its ID."""
+    return db.query(models.Policy).filter(models.Policy.id == policy_id).first()
+
+def get_all_policies(db: Session, skip: int = 0, limit: int = 100):
+    """Retrieves all policy versions, ordered by version number."""
+    return db.query(models.Policy).order_by(models.Policy.version.desc()).offset(skip).limit(limit).all()
