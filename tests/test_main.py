@@ -1,43 +1,13 @@
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
-import pytest
-
-# Setup temporary database for testing
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Overrides dependency from main.py
-def override_get_db():
-    try:
-        db = TestingSessionLocal()
-        yield db
-    finally:
-        db.close()
-
-# Temporary imports and app setup
-import models
-from main import app, get_db, ACTIVE_POLICY_CACHE
-app.dependency_overrides[get_db] = override_get_db
-
-client = TestClient(app=app)
+"""Test cases for the authorization service."""
+from tests.conftest import client
+from app.services.cache import ACTIVE_POLICY_CACHE
 
 # --- GLOBAL VARIABLES ---
-# Admin Key used for all authenticated POST requests (matches the key in main.py)
+# Admin Key used for all authenticated POST requests (matches the key in config.py)
 ADMIN_HEADERS = {"Authorization": "Bearer SUPER_SECRET_ADMIN_KEY_2404"}
 policy_id = 0       # Stores ID for Policy V1
 policy_id_v2 = 0    # Stores ID for Policy V2
 global_trace_id = 0
-
-# Setup: Create and drop tables for clean testing environment
-@pytest.fixture(scope="module", autouse=True)
-def setup_db():
-    models.Base.metadata.create_all(bind=engine)
-    yield
-    models.Base.metadata.drop_all(bind=engine)
 
 
 # 1. INITIAL TEST 
@@ -128,7 +98,7 @@ def test_c_rbac_allow_deny_check():
     assert response.json()["decision"] == False
     assert "Implicit Deny" in response.json()["reason"]
     
-    global_trace_id = response.json()["trace_id"] # Capture the ID
+    global_trace_id = response.json()["trace_id"]  # Capture the ID
 
 
 def test_d_abac_conditional_check():
@@ -198,9 +168,8 @@ def test_f_batch_and_cache_logic():
 
     response = client.post("/access/batch", json=batch_request)
     assert response.status_code == 200
-    assert response.json()[0]["decision"] == True # V1 allows this read
+    assert response.json()[0]["decision"] == True  # V1 allows this read
     assert response.json()[1]["decision"] == False
-
 
     # --- Part 2: Test Cache Invalidation (Activate V2) ---
     
@@ -215,10 +184,10 @@ def test_f_batch_and_cache_logic():
     # The request that was ALLOWED above (reading DRAFT) should now fail.
     response = client.post("/access", json={
         "subject": {"role": "manager"},
-        "action": "read", # V2 doesn't allow 'read'
+        "action": "read",  # V2 doesn't allow 'read'
         "resource": {"status": "DRAFT"} 
     })
-    assert response.json()["decision"] == False # Proves V2 is active 
+    assert response.json()["decision"] == False  # Proves V2 is active 
     assert "Implicit Deny" in response.json()["reason"]
 
 
@@ -233,7 +202,7 @@ def test_h_get_policy_visibility_and_rollback():
     response = client.get("/policies/", headers=ADMIN_HEADERS)
     assert response.status_code == 200
     policies_list = response.json()
-    assert len(policies_list) >= 2 # Must contain V1 and V2
+    assert len(policies_list) >= 2  # Must contain V1 and V2
     
     # Verify V1 and V2 existence
     v1 = next((p for p in policies_list if p['version'] == 1), None)
@@ -256,5 +225,6 @@ def test_h_get_policy_visibility_and_rollback():
     
     # 4. Final Check: Active endpoint shows V1
     response = client.get("/policies/active", headers=ADMIN_HEADERS)
-    assert response.json()['version'] == 1 # V1 is now the active policy
+    assert response.json()['version'] == 1  # V1 is now the active policy
     assert response.json()['is_active'] == True
+
