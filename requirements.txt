@@ -1,6 +1,22 @@
+# web framework for building API's. Uses python, generates interactive API docs, supports async await, 
+# built on pydantic for data validation and starlette for web framework.
 fastapi==0.104.1
+# An ASGI server for running FastAPI applications.
+# command: uvicorn main:app --reload
+# handles http requests and serves the API
 uvicorn==0.23.2
+# It is a data validation library.
+# Defines req/res schemas and validates incoming json.
 pydantic==2.5.0
+# SQLAlchemy is a Python SQL toolkit and Object-Relational Mapping library for
+# relational databases. Here, in models.py
+# Also used for database connection and session management
+# Also in crud.py for database operations
 sqlalchemy==2.0.22
+# pytest is a testing framework that makes it easy to write and run tests.
+# It is used to test the code in the project.
 pytest==7.4.3
+# An async http client library for making HTTP requests.
+# Used in test_main.py for making HTTP requests to the API.
 httpx
+python-dotenv
