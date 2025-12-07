@@ -28,8 +28,7 @@ The service implements a **Hybrid RBAC (Role-Based Access Control) and ABAC (Att
 1.  **Clone the Repository:**
 
     ```bash
-    git clone [YOUR_REPOSITORY_LINK]
-    cd [YOUR_PROJECT_FOLDER]
+    git clone https://github.com/the-ivii/Permissions-As-Data-OJT.git
     ```
 
 2.  **Create & Activate Virtual Environment:**
