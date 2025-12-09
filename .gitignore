@@ -9,4 +9,4 @@ test.db
 logs/
 *.log
 .npm
-Library/
+Library/frontend/.vite/
