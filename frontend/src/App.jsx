@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
-const API_BASE_DEFAULT = import.meta.env.VITE_API_BASE || "http://localhost:8000";
+const API_BASE_DEFAULT =
+  import.meta.env.VITE_API_BASE || "https://permissions-as-data-ojt.onrender.com";
 
 const SAMPLE_POLICY = `{
   "rules": [
