@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Permissions-as-Data UI</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 16px; background: #f7f7f7; }
+    h1 { margin-bottom: 4px; }
+    h2 { margin: 24px 0 8px; }
+    section { background: #fff; padding: 12px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 16px; }
+    label { display: block; margin: 6px 0 2px; font-weight: 600; }
+    input, textarea, button { width: 100%; padding: 8px; margin-bottom: 8px; box-sizing: border-box; font-family: inherit; }
+    textarea { min-height: 80px; }
+    .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+    pre { background: #111; color: #0f0; padding: 8px; border-radius: 4px; overflow-x: auto; max-height: 260px; }
+    .small { font-size: 12px; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>Permissions-as-Data UI</h1>
+  <p class="small">Use this page to exercise the API without Postman.</p>
+
+  <section>
+    <h2>Admin Settings</h2>
+    <label for="adminKey">Admin API Key (for management endpoints)</label>
+    <input id="adminKey" type="text" placeholder="SUPER_SECRET_ADMIN_KEY_2404" />
+    <button onclick="saveAdminKey()">Save Admin Key</button>
+    <p class="small">Stored in memory only; refresh to clear.</p>
+  </section>
+
+  <div class="row">
+    <section>
+      <h2>Create Role (Admin)</h2>
+      <label>Name</label><input id="roleName" type="text" placeholder="manager" />
+      <label>Description</label><input id="roleDesc" type="text" placeholder="Manager role" />
+      <label>Parent Names (comma-separated)</label><input id="roleParents" type="text" placeholder="employee" />
+      <button onclick="createRole()">Create Role</button>
+    </section>
+
+    <section>
+      <h2>Create Policy (Admin)</h2>
+      <label>Name</label><input id="policyName" type="text" placeholder="default_policy" />
+      <label>Content (JSON)</label>
+      <textarea id="policyContent">{\n  "rules": [\n    { "role": "manager", "action": "write", "effect": "allow", "resource_match": {"status": "DRAFT"} },\n    { "role": "employee", "action": "read", "effect": "allow" },\n    { "role": "*", "action": "*", "effect": "deny", "resource_match": {"category": "finance"} }\n  ]\n}</textarea>
+      <button onclick="createPolicy()">Create Policy</button>
+    </section>
+  </div>
+
+  <div class="row">
+    <section>
+      <h2>Activate Policy (Admin)</h2>
+      <label>Policy ID</label><input id="activatePolicyId" type="number" />
+      <button onclick="activatePolicy()">Activate</button>
+    </section>
+
+    <section>
+      <h2>List Policies (Admin)</h2>
+      <button onclick="listPolicies()">List Policies</button>
+    </section>
+  </div>
+
+  <section>
+    <h2>Active Policy (Admin)</h2>
+    <button onclick="getActivePolicy()">Get Active Policy</button>
+  </section>
+
+  <div class="row">
+    <section>
+      <h2>Single Access Check</h2>
+      <label>Subject (JSON)</label><textarea id="subjectInput">{ "role": "manager" }</textarea>
+      <label>Action</label><input id="actionInput" type="text" placeholder="write" value="write" />
+      <label>Resource (JSON)</label><textarea id="resourceInput">{ "status": "DRAFT" }</textarea>
+      <label><input id="dryRun" type="checkbox" /> Dry Run</label>
+      <button onclick="accessCheck()">Check Access</button>
+    </section>
+
+    <section>
+      <h2>Batch Access Check</h2>
+      <label>Requests (JSON array)</label>
+      <textarea id="batchInput">[\n  {\n    "subject": { "role": "manager" },\n    "action": "write",\n    "resource": { "status": "DRAFT" },\n    "dry_run": false\n  },\n  {\n    "subject": { "role": "employee" },\n    "action": "write",\n    "resource": { "status": "FINAL" },\n    "dry_run": false\n  }\n]</textarea>
+      <button onclick="batchAccess()">Run Batch</button>
+    </section>
+  </div>
+
+  <section>
+    <h2>Health</h2>
+    <button onclick="getHealth()">Check /health</button>
+  </section>
+
+  <section>
+    <h2>Response</h2>
+    <pre id="output">Waiting for actions...</pre>
+  </section>
+
+  <script>
+    let adminKey = "";
+
+    function saveAdminKey() {
+      adminKey = document.getElementById("adminKey").value.trim();
+      log({ message: "Admin key saved (in memory)", adminKeySet: !!adminKey });
+    }
+
+    function log(data) {
+      document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function request(method, path, body = null, needAdmin = false) {
+      const headers = { "Content-Type": "application/json" };
+      if (needAdmin && adminKey) {
+        headers["Authorization"] = `Bearer ${adminKey}`;
+      }
+      const res = await fetch(path, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : null
+      });
+      let payload;
+      try {
+        payload = await res.json();
+      } catch (e) {
+        payload = { error: "Non-JSON response", status: res.status, text: await res.text() };
+      }
+      log({ status: res.status, ok: res.ok, data: payload });
+      return payload;
+    }
+
+    function parseJSON(text) {
+      try { return JSON.parse(text); } catch (e) { throw new Error("Invalid JSON"); }
+    }
+
+    // Admin actions
+    async function createRole() {
+      const parentNames = document.getElementById("roleParents").value.trim();
+      const payload = {
+        name: document.getElementById("roleName").value.trim(),
+        description: document.getElementById("roleDesc").value.trim() || null,
+        parent_names: parentNames ? parentNames.split(",").map(s => s.trim()).filter(Boolean) : []
+      };
+      await request("POST", "/roles/", payload, true);
+    }
+
+    async function createPolicy() {
+      const payload = {
+        name: document.getElementById("policyName").value.trim(),
+        content: parseJSON(document.getElementById("policyContent").value)
+      };
+      await request("POST", "/policies/", payload, true);
+    }
+
+    async function activatePolicy() {
+      const id = document.getElementById("activatePolicyId").value;
+      await request("POST", `/policies/${id}/activate`, null, true);
+    }
+
+    async function listPolicies() {
+      await request("GET", "/policies/", null, true);
+    }
+
+    async function getActivePolicy() {
+      await request("GET", "/policies/active", null, true);
+    }
+
+    // Authorization
+    async function accessCheck() {
+      const payload = {
+        subject: parseJSON(document.getElementById("subjectInput").value),
+        action: document.getElementById("actionInput").value.trim(),
+        resource: parseJSON(document.getElementById("resourceInput").value),
+        dry_run: document.getElementById("dryRun").checked
+      };
+      await request("POST", "/access", payload, false);
+    }
+
+    async function batchAccess() {
+      const payload = parseJSON(document.getElementById("batchInput").value);
+      await request("POST", "/access/batch", payload, false);
+    }
+
+    // Health
+    async function getHealth() {
+      await request("GET", "/health", null, false);
+    }
+  </script>
+</body>
+</html>
+

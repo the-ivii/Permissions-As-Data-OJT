@@ -8,3 +8,5 @@ test.db
 .env
 logs/
 *.log
+.npm
+Library/
