@@ -2,6 +2,7 @@
 from fastapi import FastAPI, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from fastapi.middleware.cors import CORSMiddleware 
 from app.core.database import engine, Base, SessionLocal
 from app.core.logging_config import logger
 from app.api.v1.router import api_router
@@ -27,39 +28,49 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Include API routes (without prefix for backward compatibility with existing tests)
+
+origins = [
+    "https://693ac0e0bf4b85b29ff0d6ed--glittering-griffin-3463ab.netlify.app",  # your Netlify frontend
+    "https://glittering-griffin-3463ab.netlify.app",  # final static URL
+    "http://localhost:3000",
+    "http://localhost:5173",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,           # <-- restrictions for security
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+logger.info("CORS middleware configured successfully")
+
+# Include API routes
 app.include_router(api_router)
 logger.info("API routes registered successfully")
 
-
 @app.on_event("startup")
 async def startup_event():
-    """Initialize services on startup."""
     logger.info("Application startup complete")
-
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Cleanup on shutdown."""
     logger.info("Application shutting down")
-
 
 @app.get("/", tags=["Health"])
 def read_root():
-    """Basic health check endpoint."""
     return {"status": "Permissions Service is Operational", "docs": "/docs"}
-
 
 @app.get("/health", tags=["Health"], status_code=status.HTTP_200_OK)
 def health_check():
-    """Detailed health check endpoint with system status."""
     health_status = {
         "status": "healthy",
         "service": "Permissions-as-Data Hybrid Service",
         "version": "1.0.0",
         "checks": {}
     }
-    
+
     # Database connectivity check
     try:
         db = SessionLocal()
@@ -76,7 +87,7 @@ def health_check():
             "message": f"Database connection failed: {str(e)}"
         }
         logger.error(f"Database health check failed: {e}")
-    
+
     # Cache status check
     try:
         cached_policy = ACTIVE_POLICY_CACHE.get("policy")
@@ -92,7 +103,7 @@ def health_check():
             "message": f"Cache check failed: {str(e)}"
         }
         logger.error(f"Cache health check failed: {e}")
-    
+
     # Active policy check
     try:
         db = SessionLocal()
@@ -109,11 +120,9 @@ def health_check():
             "message": f"Policy check failed: {str(e)}"
         }
         logger.error(f"Policy health check failed: {e}")
-    
-    # Return appropriate status code
+
     status_code = status.HTTP_200_OK
     if health_status["status"] == "degraded":
         status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    
-    return JSONResponse(content=health_status, status_code=status_code)
 
+    return JSONResponse(content=health_status, status_code=status_code)
