@@ -1,9 +1,6 @@
 """FastAPI application entry point."""
 from fastapi import FastAPI, status
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
-from pathlib import Path
 from sqlalchemy import text
 from app.core.database import engine, Base, SessionLocal
 from app.core.logging_config import logger
@@ -30,28 +27,9 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS (enable for local dev UI and same-origin)
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Include API routes (without prefix for backward compatibility with existing tests)
 app.include_router(api_router)
 logger.info("API routes registered successfully")
-
-# Serve a minimal UI at /ui for quick manual testing
-STATIC_DIR = Path(__file__).resolve().parent / "static"
-app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
 
 
 @app.on_event("startup")

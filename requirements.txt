@@ -20,3 +20,4 @@ pytest==7.4.3
 # Used in test_main.py for making HTTP requests to the API.
 httpx
 python-dotenv
+psycopg2-binary
